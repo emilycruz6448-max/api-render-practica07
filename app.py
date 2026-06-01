@@ -1,25 +1,23 @@
 import os
 
-import json
-
 from flask import Flask, request, jsonify
 
 from datetime import datetime
 
 from functools import wraps
+from psycopg.errors import UniqueViolation
 
 # Intentar importar psycopg2
 
 try:
-
-    import psycopg2
-
-    import psycopg2.extras
+    import psycopg
+    from psycopg.rows import dict_row
 
     USAR_DB = True
+    print("PSYCOPG CARGADO CORRECTAMENTE")
 
-except ImportError:
-
+except Exception as e:
+    print("ERROR PSYCOPG:", e)
     USAR_DB = False
 
 app = Flask(__name__)
@@ -39,12 +37,20 @@ APP_ENV = os.environ.get("APP_ENV", "development")
 # ============================================
 
 def get_db():
-
-    if not USAR_DB or not DATABASE_URL:
-
+    if not USAR_DB:
         return None
 
-    return psycopg2.connect(DATABASE_URL)
+    if not DATABASE_URL:
+        return None
+
+    try:
+        return psycopg.connect(
+            DATABASE_URL,
+            row_factory=dict_row
+        )
+    except Exception as e:
+        print(f"ERROR DB: {e}")
+        return None
 
 def init_db():
 
@@ -556,7 +562,7 @@ def listar_materias():
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     
 
@@ -580,7 +586,16 @@ def listar_materias():
 
         query += " AND semestre = %s"
 
-        params.append(int(semestre))
+        if semestre:
+    try:
+        semestre = int(semestre)
+    except ValueError:
+        return jsonify({
+            "error": "El semestre debe ser numérico"
+        }), 400
+
+    query += " AND semestre = %s"
+    params.append(semestre)
 
     if tipo:
 
@@ -642,7 +657,7 @@ def obtener_materia(id):
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     cur.execute("SELECT * FROM materias WHERE id = %s", (id,))
 
@@ -700,7 +715,7 @@ def crear_materia():
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     try:
 
@@ -752,13 +767,21 @@ def crear_materia():
 
         return jsonify({"mensaje": "Materia creada", "materia": nueva}), 201
 
-    except psycopg2.errors.UniqueViolation:
+   except UniqueViolation:
+    conn.rollback()
+    return jsonify({
+        "error": f"La clave {data['clave']} ya existe"
+    }), 409
 
-        conn.rollback()
+except Exception as e:
+    conn.rollback()
+    return jsonify({
+        "error": str(e)
+    }), 500
 
-        cur.close()
-
-        conn.close()
+finally:
+    cur.close()
+    conn.close()
 
         return jsonify({"error": f"La clave {data['clave']} ya existe"}), 409
 
@@ -814,7 +837,7 @@ def actualizar_materia(id):
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     cur.execute(f"""
 
@@ -898,7 +921,7 @@ def estadisticas():
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     
 
@@ -1000,7 +1023,7 @@ def listar_reportes():
 
     
 
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     cur.execute("SELECT * FROM reportes ORDER BY fecha DESC LIMIT 10")
 
