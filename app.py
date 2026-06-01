@@ -46,7 +46,7 @@ def get_db():
     try:
         return psycopg.connect(
             DATABASE_URL,
-            row_factory=dict_row
+            count = cur.fetchone()["count"]
         )
     except Exception as e:
         print(f"ERROR DB: {e}")
@@ -120,7 +120,7 @@ def init_db():
 
     # Insertar datos iniciales si la tabla esta vacia
 
-    cur.execute("SELECT COUNT(*) FROM materias")
+   cur.execute("SELECT COUNT(*) AS count FROM materias")
 
     count = cur.fetchone()[0]
 
@@ -680,134 +680,90 @@ def obtener_materia(id):
     return jsonify(materia)
 
 @app.route("/api/materias", methods=["POST"])
-
 @requiere_api_key
-
 def crear_materia():
 
     conn = get_db()
 
     if not conn:
-
         return jsonify({"error": "Base de datos no disponible"}), 503
-
-    
 
     data = request.get_json()
 
     if not data:
-
         return jsonify({"error": "Body JSON requerido"}), 400
-
-    
 
     campos_requeridos = ["clave", "nombre", "semestre"]
 
     for campo in campos_requeridos:
-
         if campo not in data:
-
-            return jsonify({"error": f"Campo requerido: {campo}"}), 400
-
-    
+            return jsonify({
+                "error": f"Campo requerido: {campo}"
+            }), 400
 
     cur = conn.cursor()
 
     try:
 
         cur.execute("""
-
-            INSERT INTO materias (clave, nombre, semestre, creditos, tipo, 
-
-                                 horas_teoria, horas_practica, competencia)
-
+            INSERT INTO materias (
+                clave,
+                nombre,
+                semestre,
+                creditos,
+                tipo,
+                horas_teoria,
+                horas_practica,
+                competencia
+            )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-
             RETURNING *
-
         """, (
-
             data["clave"],
-
             data["nombre"],
-
             data["semestre"],
-
             data.get("creditos", 5),
-
             data.get("tipo", "Obligatoria"),
-
             data.get("horas_teoria", 3),
-
             data.get("horas_practica", 2),
-
             data.get("competencia", "")
-
         ))
 
         nueva = cur.fetchone()
 
         conn.commit()
 
+        if nueva.get("fecha_registro"):
+            nueva["fecha_registro"] = nueva["fecha_registro"].isoformat()
+
+        return jsonify({
+            "mensaje": "Materia creada",
+            "materia": nueva
+        }), 201
+
+    except UniqueViolation:
+
+        conn.rollback()
+
+        return jsonify({
+            "error": f"La clave {data['clave']} ya existe"
+        }), 409
+
+    except Exception as e:
+
+        conn.rollback()
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+    finally:
+
+        cur.close()
+        conn.close()
+
         
-try:
 
-    cur.execute("""
-        INSERT INTO materias (
-            clave,
-            nombre,
-            semestre,
-            creditos,
-            tipo,
-            horas_teoria,
-            horas_practica,
-            competencia
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING *
-    """, (
-        data["clave"],
-        data["nombre"],
-        data["semestre"],
-        data.get("creditos", 5),
-        data.get("tipo", "Obligatoria"),
-        data.get("horas_teoria", 3),
-        data.get("horas_practica", 2),
-        data.get("competencia", "")
-    ))
-
-    nueva = cur.fetchone()
-
-    conn.commit()
-
-    if nueva.get("fecha_registro"):
-        nueva["fecha_registro"] = nueva["fecha_registro"].isoformat()
-
-    return jsonify({
-        "mensaje": "Materia creada",
-        "materia": nueva
-    }), 201
-
-except UniqueViolation:
-
-    conn.rollback()
-
-    return jsonify({
-        "error": f"La clave {data['clave']} ya existe"
-    }), 409
-
-except Exception as e:
-
-    conn.rollback()
-
-    return jsonify({
-        "error": str(e)
-    }), 500
-
-finally:
-
-    cur.close()
-    conn.close()
         
 
 @app.route("/api/materias/<int:id>", methods=["PUT"])
