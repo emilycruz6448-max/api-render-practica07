@@ -583,15 +583,11 @@ def listar_materias():
     
 
     if semestre:
-
-        query += " AND semestre = %s"
-
-        if semestre:
     try:
         semestre = int(semestre)
     except ValueError:
         return jsonify({
-            "error": "El semestre debe ser numérico"
+            "error": "El semestre debe ser numerico"
         }), 400
 
     query += " AND semestre = %s"
@@ -754,36 +750,65 @@ def crear_materia():
         conn.commit()
 
         
+try:
 
-        if nueva.get("fecha_registro"):
+    cur.execute("""
+        INSERT INTO materias (
+            clave,
+            nombre,
+            semestre,
+            creditos,
+            tipo,
+            horas_teoria,
+            horas_practica,
+            competencia
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING *
+    """, (
+        data["clave"],
+        data["nombre"],
+        data["semestre"],
+        data.get("creditos", 5),
+        data.get("tipo", "Obligatoria"),
+        data.get("horas_teoria", 3),
+        data.get("horas_practica", 2),
+        data.get("competencia", "")
+    ))
 
-            nueva["fecha_registro"] = nueva["fecha_registro"].isoformat()
+    nueva = cur.fetchone()
 
-        
+    conn.commit()
 
-        cur.close()
+    if nueva.get("fecha_registro"):
+        nueva["fecha_registro"] = nueva["fecha_registro"].isoformat()
 
-        conn.close()
+    return jsonify({
+        "mensaje": "Materia creada",
+        "materia": nueva
+    }), 201
 
-        return jsonify({"mensaje": "Materia creada", "materia": nueva}), 201
+except UniqueViolation:
 
-   except UniqueViolation:
     conn.rollback()
+
     return jsonify({
         "error": f"La clave {data['clave']} ya existe"
     }), 409
 
 except Exception as e:
+
     conn.rollback()
+
     return jsonify({
         "error": str(e)
     }), 500
 
 finally:
+
     cur.close()
     conn.close()
-
-        return jsonify({"error": f"La clave {data['clave']} ya existe"}), 409
+        
 
 @app.route("/api/materias/<int:id>", methods=["PUT"])
 
